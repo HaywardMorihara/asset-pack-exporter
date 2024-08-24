@@ -1,0 +1,139 @@
+#!/bin/bash
+
+help() {
+    cat << EOF
+Usage: ${0##*/} [OPTION]...
+
+1. Finds all *.png files under 'world/' and
+2. Generates an asset pack directory under assets/art/asset_packs/
+
+Options:
+  -h, --help                Display this help message
+  -v, --version VERSION     Version of the new 'assets/art/asset_packs/rpg_asset_pack_vX.Y/' directory, In the format X.Y
+  -d, --dry-run             Print out all the files that will be added to the new asset pack directory
+
+Examples:
+  ${0##*/} -h
+  ${0##*/} -v 1.0 
+  ${0##*/} -v 1.0 -d 
+
+EOF
+}
+
+validate_version() {
+    if [[ "$1" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+PNG_SRC_DIR="world"
+ASSET_PACK_ROOT_DIR="assets/art/asset_packs"
+ASSET_PACK_DIR_BASE="$ASSET_PACK_ROOT_DIR/rpg_asset_pack_v"
+NEW_VERSION=""
+DRY_RUN=false
+
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            help
+            exit 0
+            ;;
+        -v|--version)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                if validate_version "$2"; then
+                    NEW_VERSION="$2"
+                    shift 2
+                else
+                    echo "Error: --set-version requires a version string in the format X.Y"
+                    exit 1
+                fi
+            else
+                echo "Error: --set-version requires a non-empty argument."
+                exit 1
+            fi
+            ;;
+        -d|--dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        *)
+            echo "Invalid option. Use --help to see available options."
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$NEW_VERSION" ]]; then
+    echo "Error: Version string not specified. Use -V or --version to specify the version string."
+    exit 1
+fi
+
+NEW_DIR="${ASSET_PACK_DIR_BASE}${NEW_VERSION}"
+
+if [ -d "$NEW_DIR" ]; then
+    echo "ERROR: $NEW_DIR already exists. Specify a new version with -V or --version."
+    exit 1
+fi 
+
+if $DRY_RUN; then
+    echo "Dry run: Would create a new asset pack directory: $NEW_DIR..."
+else
+    echo "Creating a new asset pack directory: $NEW_DIR..."
+    mkdir -p "$NEW_DIR"
+fi
+
+if [[ "$DRY_RUN" != "true" ]]; then
+    # TODO Should copy and have you edit the existing README
+
+    # Define the README.md file path
+    readme_file="$NEW_DIR/README.md"
+
+    # Default README content
+    # TODO Variables for the README
+cat <<EOF > "$readme_file"
+[CC0 License​](https://creativecommons.org/public-domain/cc0/)
+(TL; DR use it however you'd like!)
+
+Thanks for downloading my asset pack!
+
+Please share whatever you use it for on the asset pack Itch page.
+
+Crediting to Murphy's Dad​ (https://murphysdad.itch.io/) is appreciated but not necessary.
+
+Please reach out to me if you'd like certain additions to the asset pack!
+EOF
+
+    # Determine which editor to use
+    if command -v nano >/dev/null 2>&1; then
+        editor="nano"
+    elif command -v vi >/dev/null 2>&1; then
+        editor="vi"
+    else
+        echo "No suitable text editor found. Please edit $readme_file manually."
+        exit 1
+    fi
+
+    echo "Opening $readme_file in $editor for editing..."
+    $editor "$readme_file"
+
+    echo "$readme_file created."
+fi
+
+find "$PNG_SRC_DIR" -type f -name "*.png" | while read -r file; do
+    new_file_path="${NEW_DIR}${file#$PNG_SRC_DIR}"
+    if $DRY_RUN; then
+        echo "Dry run: Would copy $file to $new_file_path"
+    else
+        echo "Copying $file to $new_file_path"
+        mkdir -p "$(dirname "$new_file_path")"
+        cp "$file" "$new_file_path"
+    fi
+done
+
+echo "Generated new assset pack at $NEW_DIR"
+
+ASSET_PACK_ZIP="$NEW_DIR.zip"
+zip -r $ASSET_PACK_ZIP $NEW_DIR
+echo "Generated a zip of the asset pack: $ASSET_PACK_ZIP"
