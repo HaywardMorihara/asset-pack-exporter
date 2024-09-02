@@ -4,18 +4,21 @@ help() {
     cat << EOF
 Usage: ${0##*/} [OPTION]...
 
-1. Finds all *.png files under 'world/' and
-2. Generates an asset pack directory under assets/art/asset_packs/
+1. Finds all *.png files under the specified source directory and
+2. Generates an asset pack directory under the specified output directory.
 
 Options:
-  -h, --help                Display this help message
-  -v, --version VERSION     Version of the new 'assets/art/asset_packs/rpg_asset_pack_vX.Y/' directory, In the format X.Y
-  -d, --dry-run             Print out all the files that will be added to the new asset pack directory
+  -h, --help                  Display this help message
+  -s, --source-dir DIR        Directory to search for .png files (e.g.: sprites/)
+  -o, --output-dir DIR        Directory to create the asset pack (default: output/)
+  -n, --asset-pack-name NAME  Base name for the asset pack directory (default: "rpg_asset_pack")
+  -v, --version VERSION       Version of the new asset pack directory, in the format X.Y
+  -d, --dry-run               Print out all the files that will be added to the new asset pack directory
 
 Examples:
   ${0##*/} -h
-  ${0##*/} -v 1.0 
-  ${0##*/} -v 1.0 -d 
+  ${0##*/} -s sprites/ -o output/ -n "rpg_asset_pack" -v 1.0 
+  ${0##*/} -s sprites/ -o output/ -n "rpg_asset_pack" -v 1.0 -d 
 
 EOF
 }
@@ -28,9 +31,9 @@ validate_version() {
     fi
 }
 
-PNG_SRC_DIR="world"
-ASSET_PACK_ROOT_DIR="assets/art/asset_packs"
-ASSET_PACK_DIR_BASE="$ASSET_PACK_ROOT_DIR/rpg_asset_pack_v"
+PNG_SRC_DIR=""
+ASSET_PACK_ROOT_DIR=""
+ASSET_PACK_NAME=""
 NEW_VERSION=""
 DRY_RUN=false
 
@@ -46,11 +49,42 @@ while [[ "$#" -gt 0 ]]; do
                     NEW_VERSION="$2"
                     shift 2
                 else
-                    echo "Error: --set-version requires a version string in the format X.Y"
+                    echo "Error: --version requires a version string in the format X.Y"
                     exit 1
                 fi
             else
-                echo "Error: --set-version requires a non-empty argument."
+                echo "Error: --version requires a non-empty argument."
+                exit 1
+            fi
+            ;;
+        -s|--source-dir)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                PNG_SRC_DIR="$2"
+                shift 2
+            else
+                echo "Error: --source-dir requires a non-empty argument."
+                exit 1
+            fi
+            ;;
+        -o|--output-dir)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                ASSET_PACK_ROOT_DIR="$2"
+                # Remove trailing '/' if it exists
+                ASSET_PACK_ROOT_DIR="${ASSET_PACK_ROOT_DIR%/}"
+                shift 2
+            else
+                echo "Error: --output-dir requires a non-empty argument."
+                exit 1
+            fi
+            ;;
+        -n|--asset-pack-name)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                ASSET_PACK_NAME="$2"
+                # Remove trailing '/' if it exists
+                ASSET_PACK_NAME="${ASSET_PACK_NAME%/}"
+                shift 2
+            else
+                echo "Error: --asset-pack-name requires a non-empty argument."
                 exit 1
             fi
             ;;
@@ -65,33 +99,46 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$NEW_VERSION" ]]; then
-    echo "Error: Version string not specified. Use -V or --version to specify the version string."
+if [[ -z "$PNG_SRC_DIR" ]]; then
+    echo "Error: Source directory not specified. Use -s or --source-dir to specify the source of .png files."
     exit 1
 fi
 
-NEW_DIR="${ASSET_PACK_DIR_BASE}${NEW_VERSION}"
+if [[ -z "$ASSET_PACK_ROOT_DIR" ]]; then
+    echo "Error: Output directory to create the asset pack not specified. Use -o or --output-dir the location of your new asset pack."
+    exit 1
+fi
 
-if [ -d "$NEW_DIR" ]; then
-    echo "ERROR: $NEW_DIR already exists. Specify a new version with -V or --version."
+if [[ -z "$ASSET_PACK_NAME" ]]; then
+    echo "Error: Name for you asset pack not specified. Use -n or --asset-pack-name to specify the name."
+    exit 1
+fi
+
+if [[ -z "$NEW_VERSION" ]]; then
+    echo "Error: Version string not specified. Use -v or --version to specify the version string."
+    exit 1
+fi
+
+ASSET_PACK_DIR="${ASSET_PACK_ROOT_DIR}/${ASSET_PACK_NAME}_v${NEW_VERSION}"
+
+if [ -d "$ASSET_PACK_DIR" ]; then
+    echo "ERROR: $ASSET_PACK_DIR already exists. Specify a new version with -v or --version."
     exit 1
 fi 
 
 if $DRY_RUN; then
-    echo "Dry run: Would create a new asset pack directory: $NEW_DIR..."
+    echo "Dry run: Would create a new asset pack directory: $ASSET_PACK_DIR..."
 else
-    echo "Creating a new asset pack directory: $NEW_DIR..."
-    mkdir -p "$NEW_DIR"
+    echo "Creating a new asset pack directory: $ASSET_PACK_DIR..."
+    mkdir -p "$ASSET_PACK_DIR"
 fi
 
 if [[ "$DRY_RUN" != "true" ]]; then
-    # TODO Should copy and have you edit the existing README
-
     # Define the README.md file path
-    readme_file="$NEW_DIR/README.md"
+    readme_file="$ASSET_PACK_DIR/README.md"
 
+    # TODO 
     # Default README content
-    # TODO Variables for the README
 cat <<EOF > "$readme_file"
 [CC0 License​](https://creativecommons.org/public-domain/cc0/)
 (TL; DR use it however you'd like!)
@@ -122,7 +169,7 @@ EOF
 fi
 
 find "$PNG_SRC_DIR" -type f -name "*.png" | while read -r file; do
-    new_file_path="${NEW_DIR}${file#$PNG_SRC_DIR}"
+    new_file_path="${ASSET_PACK_DIR}/${file#$PNG_SRC_DIR}"
     if $DRY_RUN; then
         echo "Dry run: Would copy $file to $new_file_path"
     else
@@ -132,8 +179,12 @@ find "$PNG_SRC_DIR" -type f -name "*.png" | while read -r file; do
     fi
 done
 
-echo "Generated new assset pack at $NEW_DIR"
+if $DRY_RUN; then
+    exit 0
+fi
 
-ASSET_PACK_ZIP="$NEW_DIR.zip"
-zip -r $ASSET_PACK_ZIP $NEW_DIR
+echo "Generated new asset pack at $ASSET_PACK_DIR"
+
+ASSET_PACK_ZIP="$ASSET_PACK_DIR.zip"
+zip -r $ASSET_PACK_ZIP $ASSET_PACK_DIR
 echo "Generated a zip of the asset pack: $ASSET_PACK_ZIP"
